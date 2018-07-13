@@ -3,7 +3,7 @@ import sys, re, os, subprocess, cx_Oracle, creds
 #########################
 ###### CHANGE THIS ######
 #########################
-user            = "WBHEGEDUSK2030"
+users            = ["user1", "user2", "user3"]
 randompassword  = "randompasswordgoeshere"
 ADSList         = (
     """ENRL-EXT-GENERAL
@@ -29,11 +29,16 @@ ADSList         = (
 ##### ANYTHING BELOW ####
 #########################
 
+try:
+    import creds
+except ModuleNotFoundError:
+    print("ERROR:\n============\nYou need to create a creds.py file")
+    exit(1)
 
 class BannerGenerator:
 
     def __init__(self):
-        database = "BANTEST"
+        database = "BANPROD"
 
         try:
             u_ora = creds.user
@@ -172,18 +177,27 @@ class BannerGenerator:
         else:
             print("No classes to add")
 
+        print("Done with %s" % user)
+        if self.errors:
+            print("\nErrors:\n=================")
+            for e in self.errors:
+                print(e + "\n")
+
+    def commitAndComplete(self):
+        ###################################
+        ######## Print any errors #########
+        ###################################
+        if self.errors:
+            print("\nErrors:\n=================")
+            for e in self.errors:
+                print(e + "\n")
+                
         ###################################
         #### Commit and close DB stuff ####
         ###################################
         self.cur.close()
         self.con.commit()
         self.con.close()
-
-        print("Complete")
-        if self.errors:
-            print("\nErrors:\n=================")
-            for e in self.errors:
-                print(e + "\n")
 
     def generate(self, user, randompassword, ADSList):
         self.randompassword = randompassword
@@ -192,4 +206,7 @@ class BannerGenerator:
 
 if __name__ == "__main__":
     x = BannerGenerator()
-    x.generate(user, randompassword, ADSList)
+    for user in users:
+        x.generate(user.upper(), randompassword, ADSList)
+    
+    x.commitAndComplete()
