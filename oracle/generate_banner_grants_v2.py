@@ -169,19 +169,15 @@ class BannerGenerator:
         if self.groups:
             self.addGroups()
         else:
-            print("No groups to add")
+            print("No groups to add to %s" % user)
 
         # Implicit boolean (only runs if list not empty)
         if self.classes:
             self.addClasses()
         else:
-            print("No classes to add")
+            print("No classes to add to %s" % user)
 
         print("Done with %s" % user)
-        if self.errors:
-            print("\nErrors:\n=================")
-            for e in self.errors:
-                print(e + "\n")
 
     def commitAndComplete(self):
         ###################################
