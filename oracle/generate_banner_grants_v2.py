@@ -95,7 +95,7 @@ class BannerGenerator:
 
             try:
                 self.cur.execute(cmd)
-                print("Added " + self.user + " to " + c)
+                print("Added " + self.user + " to " + g)
             except cx_Oracle.IntegrityError:
                 self.errors.append(self.user + " is already in " + g)
 
