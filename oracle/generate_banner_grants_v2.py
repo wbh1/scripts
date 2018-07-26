@@ -118,6 +118,7 @@ class BannerGenerator:
 
     def verify(self, user, ADSList):
         self.user = user.upper()
+        user = self.user
         if self.user == "":
             print("ERROR:\n============\nProvide a valid user to grant permissions to")
 
