@@ -83,6 +83,7 @@ class BannerGenerator:
         for x in array:
             cur = self.cur
             cur.execute(x)
+            print(x)
 
         return
 
@@ -115,9 +116,40 @@ class BannerGenerator:
                 self.errors.append(self.user + " is already in " + c)
 
         return
+    
+    def grantProxy(self, user, BANPROXY, BANJSPROXY):
+        cur = self.cur
+
+        if BANPROXY == False:
+            cur.execute("alter user %s grant connect through BANPROXY" % user)
+            print("Granted connect through BANPROXY")
+        
+        if BANJSPROXY == False:
+            cur.execute("alter user %s grant connect through BANJSPROXY" % user)
+            print("Granted connect through BANJSPROXY")
+
+        return
+
+    def verifyProxy(self, user):
+        BANJSPROXY = False
+        BANPROXY = False
+        cur = self.cur
+        cur.execute("SELECT PROXY, CLIENT from proxy_users where CLIENT = '%s'" % user)
+        for row in cur:
+            if row[0] == 'BANPROXY':
+                BANPROXY = True
+            elif row[0] == 'BANJSPROXY':
+                BANJSPROXY = True
+        
+        if BANPROXY == False or BANJSPROXY == False:
+            self.grantProxy(user, BANPROXY, BANJSPROXY)
+        else:
+            print("%s already has connect through BANPROXY and BANJSPROXY" % user)
+        
+        return
+    
 
     def verify(self, user, ADSList):
-        self.user = user.upper()
         user = self.user
         if self.user == "":
             print("ERROR:\n============\nProvide a valid user to grant permissions to")
@@ -167,6 +199,10 @@ class BannerGenerator:
         ###################################
         if user_exists == False:
             self.createUser()
+        else:
+            print("%s already has a Banner account." % user)
+        
+        self.verifyProxy(user)
 
         # Implicit boolean (only runs if list not empty)
         if self.groups:
@@ -180,7 +216,7 @@ class BannerGenerator:
         else:
             print("No classes to add to %s" % user)
 
-        print("Done with %s" % user)
+        print("Done with %s. Be sure to add them to the Banner-9 AD group." % user)
 
     def commitAndComplete(self):
         ###################################
@@ -199,6 +235,7 @@ class BannerGenerator:
         self.con.close()
 
     def generate(self, user, randompassword, ADSList):
+        self.user = user.upper()
         self.randompassword = randompassword
         self.verify(user, ADSList)
 

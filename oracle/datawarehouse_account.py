@@ -13,6 +13,7 @@ parser = argparse.ArgumentParser(prog='PROG',formatter_class=argparse.MetavarTyp
 parser.add_argument('-u', '--user',type=str, required=True, help='Specify the user to create')
 parser.add_argument('-m','--mirror', type=bool, required=False, help='Copy another user\'s permissions')
 parser.add_argument('-u2', '--user2',type=str, required=False, help='User to copy perms from')
+parser.add_argument('-r', '--roles',nargs='+',required=False,help="comma separated list of roles to grant")
 args = parser.parse_args()
 
 if args.mirror:
@@ -23,6 +24,7 @@ if args.mirror:
 
 user = args.user
 mirror = args.mirror
+roles = args.roles
 
 try:
     import creds
@@ -52,10 +54,6 @@ class WHPRDGenerator:
             )
             exit(1)
 
-        self.classes = []
-        self.groups = []
-        self.errors = []
-
         try:
             self.con = cx_Oracle.connect(u_ora, p_ora, database)
             self.cur = self.con.cursor()
@@ -69,7 +67,7 @@ class WHPRDGenerator:
         cur.execute("SELECT username FROM dba_users WHERE username = '%s'" % user.upper())
         if len(cur.fetchall()) == 1:
             print("ERROR: User already exists in WHPRD")
-            exit(1)
+            return
 
         # Create basic user
         commands = [
@@ -123,6 +121,15 @@ class WHPRDGenerator:
             except:
                 print("Could not execute " + cmd)
     
+    def indiv_Roles(self, user, roles):
+        for role in roles:
+            cmd = "grant " + role + " to " + user
+            try:
+                print(cmd)
+                self.cur.execute(cmd)
+            except:
+                raise
+    
     def close(self):
         self.cur.close()
         self.con.close()
@@ -132,9 +139,12 @@ if __name__ == "__main__":
     if not mirror:
         x = WHPRDGenerator()
         x.create(user)
+        if roles != "":
+            x.indiv_Roles(user,roles)
         x.close()
     else:
         x = WHPRDGenerator()
         x.create(user)
         x.mirror(user,user2)
         x.close()
+    
