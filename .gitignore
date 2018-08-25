@@ -1,1 +1,5 @@
 oracle/creds.py
+testing/testing.py
+servicenow/sn_INC_assignedtest.js
+servicenow/adaptive_msg.js
+oracle/__pycache__/
