@@ -30,7 +30,9 @@ function defaultsChange() {
 
 // Set Card Title Based on What Changed
 function whatChanged() {
-	if (current.active.changesTo('false')) {
+    if (current.active.changesTo('true')) {
+        pretext = "New Incident Assigned";
+    } else if (current.active.changesTo('false')) {
         changeCondition = 1;
 	} else if (current.comments.changes()) {
         changeCondition = 2;
@@ -184,4 +186,4 @@ teamsHeaderSet();
 teamsBodySet();
 slackHeaderSet();
 teamsSend();
-// slackSend();
+slackSend();
