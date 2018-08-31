@@ -37,7 +37,7 @@ except ModuleNotFoundError:
 
 class BannerGenerator:
 
-    def __init__(self):
+    def __init__(self, ADSList):
         database = "BANPROD"
 
         try:
@@ -65,6 +65,8 @@ class BannerGenerator:
             self.cur = self.con.cursor()
         except cx_Oracle.DatabaseError:
             raise
+        
+        self.verifyADSList(ADSList)
 
     def createUser(self):
         statements = """create user {0} identified by {1}
@@ -149,7 +151,7 @@ class BannerGenerator:
         return
     
 
-    def verify(self, user, ADSList):
+    def verifyUser(self):
         user = self.user
         if self.user == "":
             print("ERROR:\n============\nProvide a valid user to grant permissions to")
@@ -162,16 +164,19 @@ class BannerGenerator:
         results = len(cur.fetchall())
 
         if results == 1:
-            user_exists = True
+            self.user_exists = True
         elif results == 0:
-            user_exists = False
+            self.user_exists = False
         else:
             print("Too many results for the username query")
             raise ValueError()
+        return
 
+    def verifyADSList(self, ADSList):
         ###################################
         ##### Validate groups/classes #####
         ###################################
+        cur = self.cur
         array = ADSList.replace(" ", "").split("\n")
         for i in array:
             cmd = (
@@ -192,16 +197,18 @@ class BannerGenerator:
                 else:
                     self.errors.append(i + " is not a valid group/class")
 
+    def grantPerms(self):
         ###################################
         ##########  Create User ###########
         ##########  Add Groups  ###########
         ##########  Add Classes ###########
         ###################################
-        if user_exists == False:
+        user = self.user
+        if self.user_exists == False:
             self.createUser()
         else:
             print("%s already has a Banner account." % user)
-        
+
         self.verifyProxy(user)
 
         # Implicit boolean (only runs if list not empty)
@@ -216,7 +223,7 @@ class BannerGenerator:
         else:
             print("No classes to add to %s" % user)
 
-        print("Done with %s. Be sure to add them to the Banner-9 AD group." % user)
+        print("Done with %s. Be sure to add them to the Banner-9 AD group.\n\n" % user)
 
     def commitAndComplete(self):
         ###################################
@@ -234,15 +241,16 @@ class BannerGenerator:
         self.con.commit()
         self.con.close()
 
-    def generate(self, user, randompassword, ADSList):
+    def doTheThing(self, user, randompassword):
         self.user = user.upper()
         self.randompassword = randompassword
-        self.verify(user, ADSList)
+        self.verifyUser()
+        self.grantPerms()
 
 
 if __name__ == "__main__":
-    x = BannerGenerator()
+    x = BannerGenerator(ADSList)
     for user in users:
-        x.generate(user.upper(), randompassword, ADSList)
+        x.doTheThing(user.upper(), randompassword)
     
     x.commitAndComplete()
