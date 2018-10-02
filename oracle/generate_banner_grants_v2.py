@@ -3,10 +3,9 @@ import sys, re, os, subprocess, cx_Oracle, creds
 #########################
 ###### CHANGE THIS ######
 #########################
-users            = ["user1", "user2", "user3"]
-randompassword  = "randompasswordgoeshere"
-ADSList         = (
-    """ENRL-EXT-GENERAL
+users = ["user1", "user2", "user3"]
+randompassword = "randompasswordgoeshere"
+ADSList = """ENRL-EXT-GENERAL
     FINC-EXT-GENERAL
     REGR-EXT-GENERAL 
     FAID-EXT-GENERAL 
@@ -21,7 +20,6 @@ ADSList         = (
     GENL-Q-MED
     GENL-Q-POPSEL-CONFIG
     GENL-Q-SURVEY"""
-)
 
 
 #########################
@@ -35,8 +33,8 @@ except ModuleNotFoundError:
     print("ERROR:\n============\nYou need to create a creds.py file")
     exit(1)
 
-class BannerGenerator:
 
+class BannerGenerator:
     def __init__(self, ADSList):
         database = "BANPROD"
 
@@ -65,13 +63,47 @@ class BannerGenerator:
             self.cur = self.con.cursor()
         except cx_Oracle.DatabaseError:
             raise
-        
-        self.verifyADSList(ADSList)
 
-    def createUser(self):
+        self.__verifyADSList(ADSList)
+
+    # Add the classes from the ADS List
+    def __addClasses(self):
+        for c in self.classes:
+            cmd = (
+                "insert into bansecr.gurucls (GURUCLS_USERID, GURUCLS_CLASS_CODE, GURUCLS_ACTIVITY_DATE, GURUCLS_USER_ID)"
+                "VALUES ('{0}', '{1}', CURRENT_DATE, 'BANSECR')"
+            ).format(self.user, c)
+
+            try:
+                self.cur.execute(cmd)
+                print("Added " + self.user + " to " + c)
+            except cx_Oracle.IntegrityError:
+                self.errors.append(self.user + " is already in " + c)
+
+        return
+
+    # Add the groups from the ADS List
+    def __addGroups(self):
+        for g in self.groups:
+            cmd = (
+                "insert into bansecr.gurugrp (GURUGRP_USER, GURUGRP_SGRP_CODE, GURUGRP_ACTIVITY_DATE, GURUGRP_USER_ID)"
+                " VALUES ('{0}', '{1}', CURRENT_DATE, 'BANSECR')"
+            ).format(self.user, g)
+
+            try:
+                self.cur.execute(cmd)
+                print("Added " + self.user + " to " + g)
+            except cx_Oracle.IntegrityError:
+                self.errors.append(self.user + " is already in " + g)
+
+        return
+
+    # Create a user if they don't already exist.
+    def __createUser(self):
+        self.newuser = True
         statements = """create user {0} identified by {1}
         alter user {0} temporary tablespace TEMP
-        grant LU_DEFAULT_CONNECT, BAN_DEFAULT_CONNECT to {0}
+        grant LU_DEFAULT_CONNECT, BAN_DEFAULT_CONNECT, BAN_DEFAULT_M, BAN_DEFAULT_MR, BAN_DEFAULT_Q to {0}
         alter user {0} default role LU_DEFAULT_CONNECT, BAN_DEFAULT_CONNECT
         alter user {0} default tablespace users
         alter user {0} profile default
@@ -89,69 +121,42 @@ class BannerGenerator:
 
         return
 
-    def addGroups(self):
-        for g in self.groups:
-            cmd = (
-                "insert into bansecr.gurugrp (GURUGRP_USER, GURUGRP_SGRP_CODE, GURUGRP_ACTIVITY_DATE, GURUGRP_USER_ID)"
-                " VALUES ('{0}', '{1}', CURRENT_DATE, 'BANSECR')"
-            ).format(self.user, g)
-
-            try:
-                self.cur.execute(cmd)
-                print("Added " + self.user + " to " + g)
-            except cx_Oracle.IntegrityError:
-                self.errors.append(self.user + " is already in " + g)
-
-        return
-
-    def addClasses(self):
-        for c in self.classes:
-            cmd = (
-                "insert into bansecr.gurucls (GURUCLS_USERID, GURUCLS_CLASS_CODE, GURUCLS_ACTIVITY_DATE, GURUCLS_USER_ID)"
-                "VALUES ('{0}', '{1}', CURRENT_DATE, 'BANSECR')"
-            ).format(self.user, c)
-
-            try:
-                self.cur.execute(cmd)
-                print("Added " + self.user + " to " + c)
-            except cx_Oracle.IntegrityError:
-                self.errors.append(self.user + " is already in " + c)
-
-        return
-    
-    def grantProxy(self, user, BANPROXY, BANJSPROXY):
+    # Grant proxy if they don't have it already
+    def __grantProxy(self, user, BANPROXY, BANJSPROXY):
         cur = self.cur
 
         if BANPROXY == False:
             cur.execute("alter user %s grant connect through BANPROXY" % user)
             print("Granted connect through BANPROXY")
-        
+
         if BANJSPROXY == False:
             cur.execute("alter user %s grant connect through BANJSPROXY" % user)
             print("Granted connect through BANJSPROXY")
 
         return
 
-    def verifyProxy(self, user):
+    # Verify someone's proxy access
+    def __verifyProxy(self):
+        user = self.user
         BANJSPROXY = False
         BANPROXY = False
         cur = self.cur
         cur.execute("SELECT PROXY, CLIENT from proxy_users where CLIENT = '%s'" % user)
         for row in cur:
-            if row[0] == 'BANPROXY':
+            if row[0] == "BANPROXY":
                 BANPROXY = True
-            elif row[0] == 'BANJSPROXY':
+            elif row[0] == "BANJSPROXY":
                 BANJSPROXY = True
-        
+
         if BANPROXY == False or BANJSPROXY == False:
-            self.grantProxy(user, BANPROXY, BANJSPROXY)
+            self.__grantProxy(user, BANPROXY, BANJSPROXY)
         else:
             print("%s already has connect through BANPROXY and BANJSPROXY" % user)
-        
-        return
-    
 
-    def verifyUser(self):
+        return
+
+    # Verify the user exists
+    def __verifyUser(self):
         user = self.user
         if self.user == "":
             print("ERROR:\n============\nProvide a valid user to grant permissions to")
@@ -164,15 +169,16 @@ class BannerGenerator:
         results = len(cur.fetchall())
 
         if results == 1:
-            self.user_exists = True
+            print("%s already has a Banner account." % user)
         elif results == 0:
-            self.user_exists = False
+            self.__createUser()
         else:
             print("Too many results for the username query")
             raise ValueError()
         return
 
-    def verifyADSList(self, ADSList):
+    # Validate the groups/classes provided are valid
+    def __verifyADSList(self, ADSList):
         ###################################
         ##### Validate groups/classes #####
         ###################################
@@ -197,29 +203,21 @@ class BannerGenerator:
                 else:
                     self.errors.append(i + " is not a valid group/class")
 
-    def grantPerms(self):
+    def __grantPerms(self):
         ###################################
-        ##########  Create User ###########
         ##########  Add Groups  ###########
         ##########  Add Classes ###########
         ###################################
-        user = self.user
-        if self.user_exists == False:
-            self.createUser()
-        else:
-            print("%s already has a Banner account." % user)
-
-        self.verifyProxy(user)
 
         # Implicit boolean (only runs if list not empty)
         if self.groups:
-            self.addGroups()
+            self.__addGroups()
         else:
             print("No groups to add to %s" % user)
 
         # Implicit boolean (only runs if list not empty)
         if self.classes:
-            self.addClasses()
+            self.__addClasses()
         else:
             print("No classes to add to %s" % user)
 
@@ -232,8 +230,8 @@ class BannerGenerator:
         if self.errors:
             print("\nErrors:\n=================")
             for e in self.errors:
-                print(e + "\n")
-                
+                print(e)
+
         ###################################
         #### Commit and close DB stuff ####
         ###################################
@@ -241,16 +239,27 @@ class BannerGenerator:
         self.con.commit()
         self.con.close()
 
+    # This is what the script actually calls to do things
     def doTheThing(self, user, randompassword):
-        self.user = user.upper()
+        self.user = user
         self.randompassword = randompassword
-        self.verifyUser()
-        self.grantPerms()
+
+        # Verify user exists; creates them if not
+        self.__verifyUser()
+
+        # Verify user has proxy permissions, else grant them
+        # Skip this step if the user was just created
+        if not hasattr(self, "newuser"):
+            self.__verifyProxy()
+
+        # Grant the permissions after verifying the account
+        self.__grantPerms()
 
 
 if __name__ == "__main__":
+    # Must provide an ADSList object to initialize the object
     x = BannerGenerator(ADSList)
     for user in users:
         x.doTheThing(user.upper(), randompassword)
-    
+
     x.commitAndComplete()
