@@ -106,8 +106,7 @@ function teamsSend() {
 			   "targets": [
 					{ "os": "default", "uri": titlelink }]
 	});
-	// occTeams.send('https://outlook.office.com/webhook/ff8b12f1-629c-452d-9991-9da18589836d@baf8218e-b302-4465-a993-4a39c97251b2/IncomingWebhook/cc87a04113744581896791c021ec9333/91bbe1c0-a46d-4ac4-a55c-ce0cee42b232');
-	occTeams.send('https://outlook.office.com/webhook/ff8b12f1-629c-452d-9991-9da18589836d@baf8218e-b302-4465-a993-4a39c97251b2/IncomingWebhook/d7f1650cc8ec4143aa8321b7bda74b35/91bbe1c0-a46d-4ac4-a55c-ce0cee42b232');
+	occTeams.send('url goes here');
 
 }
 
@@ -174,9 +173,7 @@ function slackHeaderSet() {
 }
 
 function slackSend() {
-    occSlack.send('https://hooks.slack.com/services/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');
-    // occSlack.send('https://hooks.slack.com/services/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');
-
+    occSlack.send('url goes here');
 }
 
 ///////////////// The Money //////////////////////

@@ -49,7 +49,7 @@ function sendNotify(state) {
             "uri": SN_link
         }]
     });
-    notifychannel.send('https://outlook.office.com/webhook/216f1f97-3864-41ee-8f8c-2da7a4fa260e@baf8218e-b302-4465-a993-4a39c97251b2/IncomingWebhook/e351a25534af46828a34846b4f153df5/91bbe1c0-a46d-4ac4-a55c-ce0cee42b232');
+    notifychannel.send('url goes here');
 }
 
 function sendTesting() {
@@ -73,7 +73,7 @@ function sendTesting() {
             "uri": SN_link
         }]
     });
-    testingchannel.send('https://outlook.office.com/webhook/216f1f97-3864-41ee-8f8c-2da7a4fa260e@baf8218e-b302-4465-a993-4a39c97251b2/IncomingWebhook/5fc24ba08c344c4bbea09a83ce91df94/91bbe1c0-a46d-4ac4-a55c-ce0cee42b232');
+    testingchannel.send('url goes here');
 }
 
 function sendBoth() {
