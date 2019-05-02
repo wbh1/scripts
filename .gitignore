@@ -7,3 +7,4 @@ env/
 .vscode/
 oracle/custom_generate_banner_grants.py
 .DS_Store
+*.pyc
