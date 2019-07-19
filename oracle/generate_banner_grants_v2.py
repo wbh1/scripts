@@ -13,7 +13,7 @@ import cx_Oracle
 #########################
 ###### CHANGE THIS ######
 #########################
-DATABASE = "BANPPRD"
+DATABASE = "BANPROD"
 USERS = ["user1", "user2", "user3"]
 RANDOMPASSWORD = "randompasswordgoeshere"
 GROUPS_AND_CLASSES = """REGR-EMP-ACADEMIC-EVAL-01
