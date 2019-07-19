@@ -1,6 +1,13 @@
-import sys, re, os, subprocess, cx_Oracle, creds, argparse
+"""
+This script is intended to be used to create new users
+in the data warehouse.
+"""
+import argparse
 
-randompassword  = "randompasswordgoeshere"
+import cx_Oracle
+from cx_Oracle import DatabaseError
+
+RANDOMPASSWORD = "randompasswordgoeshere"
 
 #########################
 ###### DON'T TOUCH ######
@@ -8,23 +15,29 @@ randompassword  = "randompasswordgoeshere"
 #########################
 
 # Parse command line arguments
-parser = argparse.ArgumentParser(prog='PROG',formatter_class=argparse.MetavarTypeHelpFormatter)
+PARSER = argparse.ArgumentParser(prog="WHPRD User Generator")
 
-parser.add_argument('-u', '--user',type=str, required=True, help='Specify the user to create')
-parser.add_argument('-m','--mirror', type=bool, required=False, help='Copy another user\'s permissions')
-parser.add_argument('-u2', '--user2',type=str, required=False, help='User to copy perms from')
-parser.add_argument('-r', '--roles',nargs='+',required=False,help="comma separated list of roles to grant")
-args = parser.parse_args()
+PARSER.add_argument("user", type=str, help="Specify the user to create")
+PARSER.add_argument(
+    "-m",
+    "--mirrored_user",
+    type=str,
+    required=False,
+    help="Specify a user whose permissions should be mirrored",
+)
+PARSER.add_argument(
+    "-r",
+    "--roles",
+    nargs="+",
+    required=False,
+    type=str,
+    help="comma separated list of roles to grant",
+)
+ARGS = PARSER.parse_args()
 
-if args.mirror:
-    if args.user2 is None:
-        parser.error("Must specify a user to copy from with '-u2' or '--user2'.")
-    else:
-        user2 = args.user2
-
-user = args.user
-mirror = args.mirror
-roles = args.roles
+USER = ARGS.user
+MIRRORED_USER = ARGS.mirrored_user
+ROLES = ARGS.roles
 
 try:
     import creds
@@ -34,56 +47,76 @@ except ModuleNotFoundError:
 
 
 class WHPRDGenerator:
+    """
+    Class used to interface with WHPRD
+    """
 
-    def __init__(self):
+    def __init__(self, user):
         database = "WHPROD"
+        self.user = user
+        self.errors = []
 
         try:
             u_ora = creds.user
-        except:
+        except AttributeError:
             print(
-                "ERROR:\n============\nSpecify a user attribute in a creds.py file in the same directory as this script"
+                "ERROR:",
+                "============",
+                "Specify a user attribute in a creds.py file in the same directory as this script",
+                sep="\n",
             )
             exit(1)
 
         try:
             p_ora = creds.password
-        except:
+        except AttributeError:
             print(
-                "ERROR:\n============\nSpecify a user attribute in a creds.py file in the same directory as this script"
+                "ERROR:",
+                "============",
+                "Specify a user attribute in a creds.py file in the same directory as this script",
+                sep="\n",
             )
             exit(1)
 
-        try:
-            self.con = cx_Oracle.connect(u_ora, p_ora, database)
-            self.cur = self.con.cursor()
-        except cx_Oracle.DatabaseError:
-            raise
+        self.con = cx_Oracle.connect(u_ora, p_ora, database)
+        self.cur = self.con.cursor()
 
-    def create(self, user):
+    def create_user(self):
+        """
+        Creates a new user, if they do not already exist.
+        """
         cur = self.cur
-        
+        user = self.user
+
         # Check if user exists already
-        cur.execute("SELECT username FROM dba_users WHERE username = '%s'" % user.upper())
+        cur.execute(
+            "SELECT username FROM dba_users WHERE username = '%s'" % user.upper()
+        )
         if len(cur.fetchall()) == 1:
-            print("ERROR: User already exists in WHPRD")
+            print("User already exists in WHPRD")
             return
 
         # Create basic user
-        commands = [
-            "CREATE USER {0} IDENTIFIED BY {1} DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE \"TEMP_ADHOC_GROUP\"",
-            "GRANT LU_STANDARD_USER to {0}",
-            "ALTER USER {0} quota 200M ON USERS",
-            "ALTER USER {0} password expire"
-        ]
+        # pylint: disable=line-too-long,bad-continuation
+        statements = """CREATE USER {0} IDENTIFIED BY {1} DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE \"TEMP_ADHOC_GROUP\"
+            GRANT LU_STANDARD_USER to {0}
+            ALTER USER {0} quota 200M ON USERS
+            ALTER USER {0} password expire""".format(
+            USER, RANDOMPASSWORD
+        )
+
+        commands = statements.split("\n")
 
         for cmd in commands:
-            cmd = cmd.format(user, randompassword)
-            print(cmd)
+            print(cmd.replace(RANDOMPASSWORD, "<redacted>"))
             cur.execute(cmd)
 
-    def mirror(self, user, user2):
+    def mirror_from(self, user2):
+        """
+        Mirror the permissions of the user provided as an argument
+        """
         cur = self.cur
+        user = self.user
 
         cmd = (
             "SELECT granted_role FROM dba_role_privs "
@@ -95,12 +128,13 @@ class WHPRDGenerator:
         results = cur.fetchall()
 
         for row in results:
-            cmd = "grant " +row[0]+ " to " + user
+            cmd = "grant " + row[0] + " to " + user
             try:
                 cur.execute(cmd)
                 print(cmd)
-            except:
-                print("Could not execute " + cmd)
+            # pylint: disable=broad-except
+            except DatabaseError as ex:
+                self.errors.append(cmd + " (" + str(ex) +")")
 
         cmd = (
             "select owner, table_name, privilege from dba_tab_privs "
@@ -114,37 +148,50 @@ class WHPRDGenerator:
         results = cur.fetchall()
 
         for row in results:
-            cmd = "grant " +row[2]+ " on " +row[0]+"."+row[1]+ " to " +user
+            cmd = "grant " + row[2] + " on " + row[0] + "." + row[1] + " to " + user
             try:
                 cur.execute(cmd)
                 print(cmd)
-            except:
-                print("Could not execute " + cmd)
-    
-    def indiv_Roles(self, user, roles):
+            # pylint: disable=broad-except
+            except DatabaseError as ex:
+                self.errors.append(cmd + " (" + str(ex) +")")
+
+    def indiv_roles(self, user, roles):
+        """
+        Grant roles that were specified on the command line.
+        """
         for role in roles:
             cmd = "grant " + role + " to " + user
-            try:
-                print(cmd)
-                self.cur.execute(cmd)
-            except:
-                raise
-    
+            print(cmd)
+            self.cur.execute(cmd)
+
     def close(self):
+        """
+        Close cursor, commit transaction, close connection.
+        """
+        ###################################
+        ######## Print any errors #########
+        ###################################
+        if self.errors:
+            print("\nErrors:\n=================")
+            for err in self.errors:
+                print(err)
+
+        ###################################
+        #### Commit and close DB stuff ####
+        ###################################
         self.cur.close()
+        self.con.commit()
         self.con.close()
 
 
 if __name__ == "__main__":
-    if not mirror:
-        x = WHPRDGenerator()
-        x.create(user)
-        if roles != "":
-            x.indiv_Roles(user,roles)
-        x.close()
-    else:
-        x = WHPRDGenerator()
-        x.create(user)
-        x.mirror(user,user2)
-        x.close()
-    
+    WG = WHPRDGenerator(USER)
+    WG.create_user()
+
+    if ROLES:
+        WG.indiv_roles(USER, ROLES)
+    if MIRRORED_USER:
+        WG.mirror_from(MIRRORED_USER)
+
+    WG.close()
