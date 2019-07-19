@@ -8,6 +8,7 @@ import cx_Oracle
 from cx_Oracle import DatabaseError
 
 RANDOMPASSWORD = "randompasswordgoeshere"
+DATABASE = "WHPROD"
 
 #########################
 ###### DON'T TOUCH ######
@@ -51,8 +52,7 @@ class WHPRDGenerator:
     Class used to interface with WHPRD
     """
 
-    def __init__(self, user):
-        database = "WHPROD"
+    def __init__(self, user, database):
         self.user = user
         self.errors = []
 
@@ -186,7 +186,7 @@ class WHPRDGenerator:
 
 
 if __name__ == "__main__":
-    WG = WHPRDGenerator(USER)
+    WG = WHPRDGenerator(USER, DATABASE)
     WG.create_user()
 
     if ROLES:
