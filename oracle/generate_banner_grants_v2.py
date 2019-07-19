@@ -1,26 +1,27 @@
-import sys, re, os, subprocess, cx_Oracle, creds
+"""
+This script is intended to be used to add users to
+a list of security groups & classes that is usually provided by ADS
+in New Hire Checklist tickets and other permissions requests.
+
+If the user does not exist, it will create them with the same grants
+that would otherwise be given during creation in the Banner Admin
+web interface.
+"""
+
+import cx_Oracle
 
 #########################
 ###### CHANGE THIS ######
 #########################
-users = ["user1", "user2", "user3"]
-randompassword = "randompasswordgoeshere"
-ADSList = """ENRL-EXT-GENERAL
-    FINC-EXT-GENERAL
-    REGR-EXT-GENERAL 
-    FAID-EXT-GENERAL 
-    ACCR-EXT-GENERAL
-    GENL-M-LETTER
-    GENL-M-POPSEL
-    GENL-M-QUICKFLOW-CONFIG
-    GENL-M-REQUIRED
-    GENL-Q-EVENTS
-    GENL-Q-IDEN
-    GENL-Q-INTL
-    GENL-Q-MED
-    GENL-Q-POPSEL-CONFIG
-    GENL-Q-SURVEY"""
-
+DATABASE = "BANPPRD"
+USERS = ["user1", "user2", "user3"]
+RANDOMPASSWORD = "randompasswordgoeshere"
+GROUPS_AND_CLASSES = """REGR-EMP-ACADEMIC-EVAL-01
+ENRL-EXT-GENERAL
+GENL-M-REQUIRED
+REGR-EMP-GENERAL
+GENL-EXT-GENERAL
+GENL-Q-IDEN"""
 
 #########################
 ###### DON'T TOUCH ######
@@ -34,43 +35,55 @@ except ModuleNotFoundError:
     exit(1)
 
 
+# pylint: disable=too-many-instance-attributes
 class BannerGenerator:
-    def __init__(self, ADSList):
-        database = "BANPROD"
+    """
+    This class is used to interface with the Banner database
+    by creating users and adding security groups/classes.
+    """
+
+    def __init__(self, ADSList, randompassword, database):
+        self.classes = []
+        self.groups = []
+        self.errors = []
+        self.user_exists = False
+        self.randompassword = randompassword
+        self.user = ""
 
         try:
             u_ora = creds.user
-        except:
+        except AttributeError:
             print(
-                "ERROR:\n============\nSpecify a user attribute in a creds.py file in the same directory as this script"
+                "ERROR:",
+                "============",
+                "Specify a user attribute in a creds.py file in the same directory as this script",
+                sep="\n",
             )
             exit(1)
 
         try:
             p_ora = creds.password
-        except:
+        except AttributeError:
             print(
-                "ERROR:\n============\nSpecify a user attribute in a creds.py file in the same directory as this script"
+                "ERROR:",
+                "============",
+                "Specify a user attribute in a creds.py file in the same directory as this script",
+                sep="\n",
             )
             exit(1)
 
-        self.classes = []
-        self.groups = []
-        self.errors = []
+        self.con = cx_Oracle.connect(u_ora, p_ora, database)
+        self.cur = self.con.cursor()
 
-        try:
-            self.con = cx_Oracle.connect(u_ora, p_ora, database)
-            self.cur = self.con.cursor()
-        except cx_Oracle.DatabaseError:
-            raise
-
-        self.__verifyADSList(ADSList)
+        self._verify_ADS_list(ADSList)
 
     # Add the classes from the ADS List
-    def __addClasses(self):
+    def _add_classes(self):
+        # pylint: disable=invalid-name
         for c in self.classes:
             cmd = (
-                "insert into bansecr.gurucls (GURUCLS_USERID, GURUCLS_CLASS_CODE, GURUCLS_ACTIVITY_DATE, GURUCLS_USER_ID)"
+                "insert into bansecr.gurucls "
+                "(GURUCLS_USERID, GURUCLS_CLASS_CODE, GURUCLS_ACTIVITY_DATE, GURUCLS_USER_ID) "
                 "VALUES ('{0}', '{1}', CURRENT_DATE, 'BANSECR')"
             ).format(self.user, c)
 
@@ -80,14 +93,14 @@ class BannerGenerator:
             except cx_Oracle.IntegrityError:
                 self.errors.append(self.user + " is already in " + c)
 
-        return
-
     # Add the groups from the ADS List
-    def __addGroups(self):
+    def _add_groups(self):
+        # pylint: disable=invalid-name
         for g in self.groups:
             cmd = (
-                "insert into bansecr.gurugrp (GURUGRP_USER, GURUGRP_SGRP_CODE, GURUGRP_ACTIVITY_DATE, GURUGRP_USER_ID)"
-                " VALUES ('{0}', '{1}', CURRENT_DATE, 'BANSECR')"
+                "insert into bansecr.gurugrp "
+                "(GURUGRP_USER, GURUGRP_SGRP_CODE, GURUGRP_ACTIVITY_DATE, GURUGRP_USER_ID) "
+                "VALUES ('{0}', '{1}', CURRENT_DATE, 'BANSECR')"
             ).format(self.user, g)
 
             try:
@@ -96,11 +109,8 @@ class BannerGenerator:
             except cx_Oracle.IntegrityError:
                 self.errors.append(self.user + " is already in " + g)
 
-        return
-
     # Create a user if they don't already exist.
-    def __createUser(self):
-        self.newuser = True
+    def _create_user(self):
         statements = """create user {0} identified by {1}
         alter user {0} temporary tablespace TEMP
         grant LU_DEFAULT_CONNECT, BAN_DEFAULT_CONNECT, BAN_DEFAULT_M, BAN_DEFAULT_MR, BAN_DEFAULT_Q to {0}
@@ -114,29 +124,27 @@ class BannerGenerator:
 
         array = statements.split("\n")
 
+        # pylint: disable=invalid-name
         for x in array:
             cur = self.cur
             cur.execute(x)
-            print(x)
-
-        return
+            print(x.replace(self.randompassword, "<redacted>"))
 
     # Grant proxy if they don't have it already
-    def __grantProxy(self, user, BANPROXY, BANJSPROXY):
+    # pylint: disable=invalid-name
+    def _grant_proxy(self, user, BANPROXY, BANJSPROXY):
         cur = self.cur
 
-        if BANPROXY == False:
+        if not BANPROXY:
             cur.execute("alter user %s grant connect through BANPROXY" % user)
             print("Granted connect through BANPROXY")
 
-        if BANJSPROXY == False:
+        if not BANJSPROXY:
             cur.execute("alter user %s grant connect through BANJSPROXY" % user)
             print("Granted connect through BANJSPROXY")
 
-        return
-
     # Verify someone's proxy access
-    def __verifyProxy(self):
+    def _verify_proxy(self):
         user = self.user
         BANJSPROXY = False
         BANPROXY = False
@@ -148,18 +156,24 @@ class BannerGenerator:
             elif row[0] == "BANJSPROXY":
                 BANJSPROXY = True
 
-        if BANPROXY == False or BANJSPROXY == False:
-            self.__grantProxy(user, BANPROXY, BANJSPROXY)
+        if not BANPROXY or not BANJSPROXY:
+            self._grant_proxy(user, BANPROXY, BANJSPROXY)
         else:
             print("%s already has connect through BANPROXY and BANJSPROXY" % user)
 
-        return
-
-    # Verify the user exists
-    def __verifyUser(self):
+    def _verify_user_exists(self):
+        """
+        Verifies that the user exists.
+        Returns True if they do; False if not.
+        """
         user = self.user
         if self.user == "":
-            print("ERROR:\n============\nProvide a valid user to grant permissions to")
+            print(
+                "ERROR:",
+                "============",
+                "Provide a valid user to grant permissions to",
+                sep="\n",
+            )
 
         #########################
         ##### Validate user #####
@@ -170,32 +184,39 @@ class BannerGenerator:
 
         if results == 1:
             print("%s already has a Banner account." % user)
-        elif results == 0:
-            self.__createUser()
-        else:
-            print("Too many results for the username query")
-            raise ValueError()
-        return
+            return True
+
+        if results == 0:
+            print("%s does not have an existing Banner account. Creating..." % user)
+            return False
+
+        # If neither of the above 'if' statements return,
+        # then too many usernames returned.
+        print("Too many results for the username query")
+        raise ValueError()
 
     # Validate the groups/classes provided are valid
-    def __verifyADSList(self, ADSList):
+    # pylint: disable=invalid-name
+    def _verify_ADS_list(self, ADSList):
         ###################################
         ##### Validate groups/classes #####
         ###################################
         cur = self.cur
         array = ADSList.replace(" ", "").split("\n")
+
+        # TODO: Rewrite to check all groups at once.
         for i in array:
             cmd = (
-                "select distinct GURCGRP_SGRP_CODE from bansecr.gurcgrp where GURCGRP_SGRP_CODE = '%s'"
-                % i
+                "select distinct GURCGRP_SGRP_CODE "
+                "from bansecr.gurcgrp where GURCGRP_SGRP_CODE = '%s'" % i
             )
             cur.execute(cmd)
             if len(cur.fetchall()) == 1:
                 self.groups.append(i)
             else:
                 cmd = (
-                    "select distinct GURUCLS_CLASS_CODE from bansecr.gurucls where GURUCLS_CLASS_CODE = '%s'"
-                    % i
+                    "select distinct GURUCLS_CLASS_CODE "
+                    "from bansecr.gurucls where GURUCLS_CLASS_CODE = '%s'" % i
                 )
                 cur.execute(cmd)
                 if len(cur.fetchall()) == 1:
@@ -203,7 +224,7 @@ class BannerGenerator:
                 else:
                     self.errors.append(i + " is not a valid group/class")
 
-    def __grantPerms(self):
+    def _grant_perms(self):
         ###################################
         ##########  Add Groups  ###########
         ##########  Add Classes ###########
@@ -211,19 +232,27 @@ class BannerGenerator:
 
         # Implicit boolean (only runs if list not empty)
         if self.groups:
-            self.__addGroups()
+            self._add_groups()
         else:
-            print("No groups to add to %s" % user)
+            print("No groups to add to %s" % self.user)
 
         # Implicit boolean (only runs if list not empty)
         if self.classes:
-            self.__addClasses()
+            self._add_classes()
         else:
-            print("No classes to add to %s" % user)
+            print("No classes to add to %s" % self.user)
 
-        print("Done with %s. Be sure to add them to the Banner-9 AD group.\n\n" % user)
+        print(
+            "Done with %s. Be sure to add them to the Banner-9 AD group.\n\n"
+            % self.user
+        )
 
-    def commitAndComplete(self):
+    def commit_and_complete(self):
+        """
+        Call this after all the work is done
+        to actually commit it to the database and close
+        the cursor and connection.
+        """
         ###################################
         ######## Print any errors #########
         ###################################
@@ -240,26 +269,32 @@ class BannerGenerator:
         self.con.close()
 
     # This is what the script actually calls to do things
-    def doTheThing(self, user, randompassword):
+    def doTheThing(self, user):
+        """
+        Verifies user exists in Banner. Creates them otherwise.
+        Grants the user permissions in Banner.
+        Fixes their proxy access if needed.
+        """
         self.user = user
-        self.randompassword = randompassword
 
         # Verify user exists; creates them if not
-        self.__verifyUser()
+        self.user_exists = self._verify_user_exists()
+        if not self.user_exists:
+            self._create_user()
 
         # Verify user has proxy permissions, else grant them
         # Skip this step if the user was just created
-        if not hasattr(self, "newuser"):
-            self.__verifyProxy()
+        if self.user_exists:
+            self._verify_proxy()
 
         # Grant the permissions after verifying the account
-        self.__grantPerms()
+        self._grant_perms()
 
 
 if __name__ == "__main__":
     # Must provide an ADSList object to initialize the object
-    x = BannerGenerator(ADSList)
-    for user in users:
-        x.doTheThing(user.upper(), randompassword)
+    BG = BannerGenerator(GROUPS_AND_CLASSES, RANDOMPASSWORD, DATABASE)
+    for u in USERS:
+        BG.doTheThing(u.upper())
 
-    x.commitAndComplete()
+    BG.commit_and_complete()
