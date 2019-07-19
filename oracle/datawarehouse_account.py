@@ -138,7 +138,7 @@ class WHPRDGenerator:
 
         cmd = (
             "select owner, table_name, privilege from dba_tab_privs "
-            "where grantee = '{1}' "
+            "where grantee = '{1}' and owner != 'SYS'"
             "MINUS select owner, table_name, privilege from dba_tab_privs "
             "where grantee = '{0}' "
             "order by owner, table_name"
