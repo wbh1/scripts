@@ -4,6 +4,8 @@ in the data warehouse.
 """
 import argparse
 
+from oracle_db import OracleDB
+
 import cx_Oracle
 from cx_Oracle import DatabaseError
 
@@ -40,46 +42,13 @@ USER = ARGS.user
 MIRRORED_USER = ARGS.mirrored_user
 ROLES = ARGS.roles
 
-try:
-    import creds
-except ModuleNotFoundError:
-    print("ERROR:\n============\nYou need to create a creds.py file")
-    exit(1)
-
-
-class WHPRDGenerator:
+class WHPRDGenerator(OracleDB):
     """
     Class used to interface with WHPRD
     """
-
     def __init__(self, user, database):
+        super().__init__(database)
         self.user = user
-        self.errors = []
-
-        try:
-            u_ora = creds.user
-        except AttributeError:
-            print(
-                "ERROR:",
-                "============",
-                "Specify a user attribute in a creds.py file in the same directory as this script",
-                sep="\n",
-            )
-            exit(1)
-
-        try:
-            p_ora = creds.password
-        except AttributeError:
-            print(
-                "ERROR:",
-                "============",
-                "Specify a user attribute in a creds.py file in the same directory as this script",
-                sep="\n",
-            )
-            exit(1)
-
-        self.con = cx_Oracle.connect(u_ora, p_ora, database)
-        self.cur = self.con.cursor()
 
     def create_user(self):
         """
@@ -164,25 +133,6 @@ class WHPRDGenerator:
             cmd = "grant " + role + " to " + user
             print(cmd)
             self.cur.execute(cmd)
-
-    def close(self):
-        """
-        Close cursor, commit transaction, close connection.
-        """
-        ###################################
-        ######## Print any errors #########
-        ###################################
-        if self.errors:
-            print("\nErrors:\n=================")
-            for err in self.errors:
-                print(err)
-
-        ###################################
-        #### Commit and close DB stuff ####
-        ###################################
-        self.cur.close()
-        self.con.commit()
-        self.con.close()
 
 
 if __name__ == "__main__":
