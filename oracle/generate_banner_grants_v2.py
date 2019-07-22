@@ -9,6 +9,7 @@ web interface.
 """
 
 import cx_Oracle
+from oracle_db import OracleDB
 
 #########################
 ###### CHANGE THIS ######
@@ -28,53 +29,34 @@ GENL-Q-IDEN"""
 ##### ANYTHING BELOW ####
 #########################
 
-try:
-    import creds
-except ModuleNotFoundError:
-    print("ERROR:\n============\nYou need to create a creds.py file")
-    exit(1)
-
-
 # pylint: disable=too-many-instance-attributes
-class BannerGenerator:
+class BannerGenerator(OracleDB):
     """
     This class is used to interface with the Banner database
     by creating users and adding security groups/classes.
     """
 
+    # List of roles all Banner users should have
+    ROLES = [
+        "LU_DEFAULT_CONNECT",
+        "BAN_DEFAULT_CONNECT",
+        "BAN_DEFAULT_M",
+        "BAN_DEFAULT_MR",
+        "BAN_DEFAULT_Q",
+    ]
+
+    # All Banner users should have one of these default roles
+    DEFAULT_ROLES = ["LU_DEFAULT_CONNECT", "BAN_DEFAULT_CONNECT", "DBA"]
+
     def __init__(self, ADSList, randompassword, database):
+        super().__init__(database)
+
         self.classes = []
         self.groups = []
         self.errors = []
         self.user_exists = False
         self.randompassword = randompassword
         self.user = ""
-
-        try:
-            u_ora = creds.user
-        except AttributeError:
-            print(
-                "ERROR:",
-                "============",
-                "Specify a user attribute in a creds.py file in the same directory as this script",
-                sep="\n",
-            )
-            exit(1)
-
-        try:
-            p_ora = creds.password
-        except AttributeError:
-            print(
-                "ERROR:",
-                "============",
-                "Specify a user attribute in a creds.py file in the same directory as this script",
-                sep="\n",
-            )
-            exit(1)
-
-        self.con = cx_Oracle.connect(u_ora, p_ora, database)
-        self.cur = self.con.cursor()
-
         self._verify_ADS_list(ADSList)
 
     # Add the classes from the ADS List
@@ -142,6 +124,45 @@ class BannerGenerator:
         if not BANJSPROXY:
             cur.execute("alter user %s grant connect through BANJSPROXY" % user)
             print("Granted connect through BANJSPROXY")
+
+    def _add_roles(self, roles: list):
+        for role in roles:
+            STMT = f"GRANT {role} to {self.user}"
+            self.cur.execute(STMT)
+            print(STMT)
+
+    def _verify_roles(self):
+        user = self.user
+        cur = self.cur
+        roles = []
+        default_roles = []
+        missing_roles = []
+
+        SELECT_ROLES = f"SELECT GRANTED_ROLE, DEFAULT_ROLE from dba_role_privs WHERE grantee = '{user}'"
+
+        cur.execute(SELECT_ROLES)
+
+        for role, default in cur.fetchall():
+            roles.append(role)
+            if default == "YES":
+                default_roles.append(role)
+
+        # This intersects the lists. Everything in self.ROLES should be in 'roles'
+        # So it should return empty and therefore be False
+        missing_roles = set(self.ROLES).difference(roles)
+        if missing_roles:
+            print(f"{user} is missing the roles: {missing_roles}. Fixing...")
+            self._add_roles(missing_roles)
+        else:
+            print(f"{user} has all the correct database roles required for Banner.")
+
+        if not set(default_roles).intersection(self.DEFAULT_ROLES):
+            print(f"{user} does not have a valid default role. Fixing...")
+            STMT = f"alter user {user} default role LU_DEFAULT_CONNECT, BAN_DEFAULT_CONNECT"
+            self.cur.execute(STMT)
+            print(STMT)
+        else:
+            print(f"{user} has a valid default database role.")
 
     # Verify someone's proxy access
     def _verify_proxy(self):
@@ -243,30 +264,9 @@ class BannerGenerator:
             print("No classes to add to %s" % self.user)
 
         print(
-            "Done with %s. Be sure to add them to the Banner-9 AD group.\n\n"
+            "\nDone with %s. Be sure to add them to the Banner-9 AD group.\n\n"
             % self.user
         )
-
-    def commit_and_complete(self):
-        """
-        Call this after all the work is done
-        to actually commit it to the database and close
-        the cursor and connection.
-        """
-        ###################################
-        ######## Print any errors #########
-        ###################################
-        if self.errors:
-            print("\nErrors:\n=================")
-            for e in self.errors:
-                print(e)
-
-        ###################################
-        #### Commit and close DB stuff ####
-        ###################################
-        self.cur.close()
-        self.con.commit()
-        self.con.close()
 
     # This is what the script actually calls to do things
     def doTheThing(self, user):
@@ -283,11 +283,14 @@ class BannerGenerator:
             self._create_user()
 
         # Verify user has proxy permissions, else grant them
+        # Verify user has correct roles/default roles, else grant them
         # Skip this step if the user was just created
         if self.user_exists:
             self._verify_proxy()
+            self._verify_roles()
 
         # Grant the permissions after verifying the account
+        print()
         self._grant_perms()
 
 
@@ -296,5 +299,4 @@ if __name__ == "__main__":
     BG = BannerGenerator(GROUPS_AND_CLASSES, RANDOMPASSWORD, DATABASE)
     for u in USERS:
         BG.doTheThing(u.upper())
-
-    BG.commit_and_complete()
+    BG.close()
