@@ -42,10 +42,12 @@ USER = ARGS.user
 MIRRORED_USER = ARGS.mirrored_user
 ROLES = ARGS.roles
 
+
 class WHPRDGenerator(OracleDB):
     """
     Class used to interface with WHPRD
     """
+
     def __init__(self, user, database):
         super().__init__(database)
         self.user = user
@@ -67,14 +69,16 @@ class WHPRDGenerator(OracleDB):
 
         # Create basic user
         # pylint: disable=line-too-long,bad-continuation
-        statements = """CREATE USER {0} IDENTIFIED BY {1} DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE \"TEMP_ADHOC_GROUP\"
-            GRANT LU_STANDARD_USER to {0}
-            ALTER USER {0} quota 200M ON USERS
-            ALTER USER {0} password expire""".format(
-            USER, RANDOMPASSWORD
+        statements = (
+            f"""
+            CREATE USER {USER} DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE "TEMP_ADHOC_GROUP" IDENTIFIED BY {RANDOMPASSWORD} PROFILE USERS
+            GRANT LU_STANDARD_USER TO {USER}
+            ALTER USER {USER} quota 200M ON USERS
+            ALTER USER {USER} password expire"""
         )
 
-        commands = statements.split("\n")
+        commands = [x for x in statements.split("\n") if x != ""]
+
 
         for cmd in commands:
             print(cmd.replace(RANDOMPASSWORD, "<redacted>"))
@@ -103,7 +107,7 @@ class WHPRDGenerator(OracleDB):
                 print(cmd)
             # pylint: disable=broad-except
             except DatabaseError as ex:
-                self.errors.append(cmd + " (" + str(ex) +")")
+                self.errors.append(cmd + " (" + str(ex) + ")")
 
         cmd = (
             "select owner, table_name, privilege from dba_tab_privs "
@@ -117,13 +121,14 @@ class WHPRDGenerator(OracleDB):
         results = cur.fetchall()
 
         for row in results:
-            cmd = "grant " + row[2] + " on " + row[0] + "." + row[1] + " to " + user
+            cmd = "grant " + row[2] + " on " + \
+                row[0] + "." + row[1] + " to " + user
             try:
                 cur.execute(cmd)
                 print(cmd)
             # pylint: disable=broad-except
             except DatabaseError as ex:
-                self.errors.append(cmd + " (" + str(ex) +")")
+                self.errors.append(cmd + " (" + str(ex) + ")")
 
     def indiv_roles(self, user, roles):
         """
