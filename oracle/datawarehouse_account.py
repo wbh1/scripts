@@ -9,7 +9,7 @@ from oracle_db import OracleDB
 import cx_Oracle
 from cx_Oracle import DatabaseError
 
-RANDOMPASSWORD = "randompasswordgoeshere"
+RANDOMPASSWORD = "DzKY9aMdU#9gDxTm"
 DATABASE = "WHPROD"
 
 #########################
