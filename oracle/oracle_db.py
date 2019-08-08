@@ -27,14 +27,14 @@ class OracleDB:
                 print(
                     "ERROR:",
                     "============",
-                    ("Specify a user attribute in a creds.py "
+                    ("Specify a password attribute in a creds.py "
                      "file in the same directory as this script"),
                     sep="\n",
                 )
                 exit(1)
         except ModuleNotFoundError:
             try:
-                u_ora, p_ora = self.get_creds('whprd')
+                u_ora, p_ora = self.get_creds(database)
             except:  # noqa: E722
                 print("ERROR:\n============\nYou need to create a creds.py "
                       "file or setup use the OS credential locker")
