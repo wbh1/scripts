@@ -10,13 +10,11 @@ web interface.
 
 import cx_Oracle
 from oracle_db import OracleDB
+import password
 
-#########################
-###### CHANGE THIS ######
-#########################
+# Change this
 DATABASE = "BANPROD"
 USERS = ["user1", "user2", "user3"]
-RANDOMPASSWORD = "randompasswordgoeshere"
 GROUPS_AND_CLASSES = """REGR-EMP-ACADEMIC-EVAL-01
 ENRL-EXT-GENERAL
 GENL-M-REQUIRED
@@ -24,12 +22,8 @@ REGR-EMP-GENERAL
 GENL-EXT-GENERAL
 GENL-Q-IDEN"""
 
-#########################
-###### DON'T TOUCH ######
-##### ANYTHING BELOW ####
-#########################
 
-# pylint: disable=too-many-instance-attributes
+# Don't touch anything below
 class BannerGenerator(OracleDB):
     """
     This class is used to interface with the Banner database
@@ -48,20 +42,19 @@ class BannerGenerator(OracleDB):
     # All Banner users should have one of these default roles
     DEFAULT_ROLES = ["LU_DEFAULT_CONNECT", "BAN_DEFAULT_CONNECT", "DBA"]
 
-    def __init__(self, ADSList, randompassword, database):
+    def __init__(self, ADSList, database):
         super().__init__(database)
 
         self.classes = []
         self.groups = []
         self.errors = []
         self.user_exists = False
-        self.randompassword = randompassword
+        self.randompassword = password.generate()
         self.user = ""
         self._verify_ADS_list(ADSList)
 
     # Add the classes from the ADS List
     def _add_classes(self):
-        # pylint: disable=invalid-name
         for c in self.classes:
             cmd = (
                 "insert into bansecr.gurucls "
@@ -77,7 +70,6 @@ class BannerGenerator(OracleDB):
 
     # Add the groups from the ADS List
     def _add_groups(self):
-        # pylint: disable=invalid-name
         for g in self.groups:
             cmd = (
                 "insert into bansecr.gurugrp "
@@ -106,14 +98,12 @@ class BannerGenerator(OracleDB):
 
         array = statements.split("\n")
 
-        # pylint: disable=invalid-name
         for x in array:
             cur = self.cur
             cur.execute(x)
             print(x.replace(self.randompassword, "<redacted>"))
 
     # Grant proxy if they don't have it already
-    # pylint: disable=invalid-name
     def _grant_proxy(self, user, BANPROXY, BANJSPROXY):
         cur = self.cur
 
@@ -122,7 +112,8 @@ class BannerGenerator(OracleDB):
             print("Granted connect through BANPROXY")
 
         if not BANJSPROXY:
-            cur.execute("alter user %s grant connect through BANJSPROXY" % user)
+            cur.execute(
+                "alter user %s grant connect through BANJSPROXY" % user)
             print("Granted connect through BANJSPROXY")
 
     def _add_roles(self, roles: list):
@@ -138,7 +129,10 @@ class BannerGenerator(OracleDB):
         default_roles = []
         missing_roles = []
 
-        SELECT_ROLES = f"SELECT GRANTED_ROLE, DEFAULT_ROLE from dba_role_privs WHERE grantee = '{user}'"
+        SELECT_ROLES = (
+            "SELECT GRANTED_ROLE, DEFAULT_ROLE from dba_role_privs"
+            f" WHERE grantee = '{user}'"
+        )
 
         cur.execute(SELECT_ROLES)
 
@@ -164,13 +158,14 @@ class BannerGenerator(OracleDB):
         else:
             print(f"{user} has a valid default database role.")
 
-    # Verify someone's proxy access
     def _verify_proxy(self):
+        """Verify someone's proxy access"""
         user = self.user
         BANJSPROXY = False
         BANPROXY = False
         cur = self.cur
-        cur.execute("SELECT PROXY, CLIENT from proxy_users where CLIENT = '%s'" % user)
+        cur.execute(
+            "SELECT PROXY, CLIENT from proxy_users where CLIENT = '%s'" % user)
         for row in cur:
             if row[0] == "BANPROXY":
                 BANPROXY = True
@@ -196,11 +191,10 @@ class BannerGenerator(OracleDB):
                 sep="\n",
             )
 
-        #########################
-        ##### Validate user #####
-        #########################
+        # Validate user
         cur = self.cur
-        cur.execute("SELECT username FROM dba_users WHERE username = '%s'" % user)
+        cur.execute(
+            "SELECT username FROM dba_users WHERE username = '%s'" % user)
         results = len(cur.fetchall())
 
         if results == 1:
@@ -216,12 +210,8 @@ class BannerGenerator(OracleDB):
         print("Too many results for the username query")
         raise ValueError()
 
-    # Validate the groups/classes provided are valid
-    # pylint: disable=invalid-name
     def _verify_ADS_list(self, ADSList):
-        ###################################
-        ##### Validate groups/classes #####
-        ###################################
+        """Validate the groups/classes provided are valid"""
         cur = self.cur
         array = ADSList.replace(" ", "").split("\n")
 
@@ -246,11 +236,7 @@ class BannerGenerator(OracleDB):
                     self.errors.append(i + " is not a valid group/class")
 
     def _grant_perms(self):
-        ###################################
-        ##########  Add Groups  ###########
-        ##########  Add Classes ###########
-        ###################################
-
+        """add groups and classes"""
         # Implicit boolean (only runs if list not empty)
         if self.groups:
             self._add_groups()
@@ -296,7 +282,7 @@ class BannerGenerator(OracleDB):
 
 if __name__ == "__main__":
     # Must provide an ADSList object to initialize the object
-    BG = BannerGenerator(GROUPS_AND_CLASSES, RANDOMPASSWORD, DATABASE)
+    BG = BannerGenerator(GROUPS_AND_CLASSES, DATABASE)
     for u in USERS:
         BG.doTheThing(u.upper())
     BG.close()
